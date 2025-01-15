@@ -1,0 +1,20 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        
+        {
+            "label": "Time series analysis",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "forecasting_framework.py",
+             ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        }
+
+    ]
+}
