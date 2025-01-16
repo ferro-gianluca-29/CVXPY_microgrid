@@ -23,12 +23,13 @@ class MSELoss(nn.Module):
             y (torch.Tensor): The true values.
             weight (Optional[torch.Tensor], optional): The weight vector. Defaults to None.
         """
+        device = y_hat.device  # Assume y_hat is already on GPU
         batch_size, _, _ = y_hat.shape
         loss = 0.0
         for i in range(batch_size):
             loss_per_sample = self.loss(y_hat[i], y[i], reduction='none')
             if weight is not None:
-                loss_per_sample = loss_per_sample * weight[:, None]
+                loss_per_sample = loss_per_sample * weight[:, None].to(device)
             loss += loss_per_sample.sum()
         loss = loss / batch_size
         return loss
@@ -36,7 +37,7 @@ class MSELoss(nn.Module):
     def get_weight(self, prediction_horizon: int, exp_decay: float,
                    device: torch.device) -> torch.Tensor:
         """Create a weight vector for the loss function, different for each prediction horizon."""
-        return exp_decay ** torch.range(0, prediction_horizon-1, device=device)
+        return exp_decay ** torch.arange(0, prediction_horizon, device=device)
     
 
 class TotalCostLoss(nn.Module):
@@ -48,14 +49,20 @@ class TotalCostLoss(nn.Module):
 
     def forward(self, Pg_hat: torch.Tensor, Pg: torch.Tensor, price: torch.Tensor) -> torch.Tensor:
         """Calculate MSE loss between real cost and predicted cost using given price and production vectors."""
-        
-        real_cost = total_cost(price=price, Pg=Pg)
-        predicted_cost = total_cost(price=price, Pg=Pg_hat)
 
-        return self.mse_loss(predicted_cost.unsqueeze(0), real_cost.unsqueeze(0))
-    
+        device = Pg_hat.device  # Assume Pg_hat is already on GPU
+        batch_size, _ = Pg_hat.shape
+        loss = 0.0
 
+        for i in range(batch_size):
+            real_cost = total_cost(price=price.to(device), Pg=Pg[i].to(device))
+            predicted_cost = total_cost(price=price.to(device), Pg=Pg_hat[i].to(device))
+            loss_per_sample = (real_cost - predicted_cost) ** 2
+            loss += loss_per_sample
 
+        loss = loss / batch_size
+        return loss
+            
 def total_cost(price: torch.Tensor, Pg: torch.Tensor) -> torch.Tensor:
     """This function computes the total cost of the power generation.
     Args:
@@ -64,7 +71,4 @@ def total_cost(price: torch.Tensor, Pg: torch.Tensor) -> torch.Tensor:
     Returns:
         float: total cost in [€] (sample time assumed to be 1h).
     """
-    return -1*torch.sum(price*Pg).item()/1000  # [€]
-    
-
-    
+    return -1*torch.sum(price * Pg) / 1000  # [€]
